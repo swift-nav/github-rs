@@ -17,7 +17,7 @@ pub fn url_join(url: &Uri, path: &str) -> Result<Uri, UriError> {
             }
             curr_path.push_str(path);
             curr_path.parse::<Uri>()
-        },
+        }
         // This should cause the request to fail if something goes
         // wrong.
         _ => Uri::from_str("Failed to make a valid Url"),

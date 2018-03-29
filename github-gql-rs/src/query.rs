@@ -1,6 +1,6 @@
 use IntoGithubRequest;
-use hyper::{ Uri, Method, Request };
-use hyper::header::{ Authorization, ContentType, UserAgent };
+use hyper::{Method, Request, Uri};
+use hyper::header::{Authorization, ContentType, UserAgent};
 use errors::*;
 use std::str::FromStr;
 
@@ -13,7 +13,9 @@ pub struct Query {
 impl Query {
     /// Create a new `Query`
     pub fn new() -> Self {
-        Self { query: String::new() }
+        Self {
+            query: String::new(),
+        }
     }
     /// Create a new `Query` using the given value as the input for the query to
     /// GitHub. Any other methods used will assume the `String` is empty. This
@@ -30,9 +32,12 @@ impl Query {
     /// let q = Query::new_raw("my query which won't work");
     /// ```
     pub fn new_raw<T>(q: T) -> Self
-        where T: ToString
+    where
+        T: ToString,
     {
-        Self { query: q.to_string() }
+        Self {
+            query: q.to_string(),
+        }
     }
 
     /// Whatever you put here becomes your query and replaces anything you might
@@ -40,7 +45,8 @@ impl Query {
     /// API so no guarantees can be made here that it will work, only that if
     /// used this can be used to make a query using the `client::Github` type.
     pub fn raw_query<T>(&mut self, q: T)
-        where T: ToString
+    where
+        T: ToString,
     {
         self.query = q.to_string();
     }
@@ -48,27 +54,28 @@ impl Query {
 
 impl IntoGithubRequest for Query {
     fn into_github_req(&self, token: &str) -> Result<Request> {
-            let mut req = Request::new(
-                Method::Post,
-                Uri::from_str("https://api.github.com/graphql")
-                    .chain_err(|| "Unable to for URL to make the request")?);
-            let mut q = String::from("{ \"query\": \"");
+        let mut req = Request::new(
+            Method::Post,
+            Uri::from_str("https://api.github.com/graphql")
+                .chain_err(|| "Unable to for URL to make the request")?,
+        );
+        let mut q = String::from("{ \"query\": \"");
 
-            //escaping new lines and quotation marks for json
-            let mut escaped = (&self.query).to_string();
-            escaped = escaped.replace("\n", "\\n");
-            escaped = escaped.replace("\"", "\\\"");
-        
-            q.push_str(&escaped);
-            q.push_str("\" }");
-            req.set_body(q);
-            let token = String::from("token ") + &token;
-            {
-                let headers = req.headers_mut();
-                headers.set(ContentType::json());
-                headers.set(UserAgent::new(String::from("github-rs")));
-                headers.set(Authorization(token));
-            }
-            Ok(req)
+        //escaping new lines and quotation marks for json
+        let mut escaped = (&self.query).to_string();
+        escaped = escaped.replace("\n", "\\n");
+        escaped = escaped.replace("\"", "\\\"");
+
+        q.push_str(&escaped);
+        q.push_str("\" }");
+        req.set_body(q);
+        let token = String::from("token ") + &token;
+        {
+            let headers = req.headers_mut();
+            headers.set(ContentType::json());
+            headers.set(UserAgent::new(String::from("github-rs")));
+            headers.set(Authorization(token));
+        }
+        Ok(req)
     }
 }

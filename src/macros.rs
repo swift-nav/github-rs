@@ -20,6 +20,7 @@ macro_rules! from {
         impl <'g> From<$f<'g>> for $i1<'g> {
             fn from(mut f: $f<'g>) -> Self {
                 use std::str::FromStr;
+                use hyper::Uri;
 
                 // This is borrow checking abuse and about the only
                 // time I'd do is_ok(). Essentially this allows us
@@ -37,8 +38,8 @@ macro_rules! from {
                                     .uri()
                                     .query()
                                     .is_some() { "&" } else { "?" };
-                            hyper::Uri::from_str(
-                                &format!("{}{}{}={}",
+                                Uri::from_str(
+                                    &format!("{}{}{}={}",
                                     req.get_mut().uri(),
                                     sep,
                                     $e1,
@@ -206,7 +207,7 @@ macro_rules! exec {
             /// the GitHub documentation to see what value you should receive
             /// back for good or bad requests.
             fn execute<T>(self) -> Result<(Headers, StatusCode, Option<T>)>
-            where T: DeserializeOwned
+                where T: DeserializeOwned
             {
                 let mut core_ref = self.core.try_borrow_mut()?;
                 let client = self.client;
@@ -215,24 +216,81 @@ macro_rules! exec {
                     .and_then(|res| {
                         let header = res.headers().clone();
                         let status = res.status();
-                        res.body().fold(Vec::new(), |mut v, chunk| {
-                            v.extend(&chunk[..]);
-                            ok::<_, hyper::Error>(v)
-                        }).map(move |chunks| {
+                        res.body().concat2().map(move |chunks| {
                             if chunks.is_empty() {
                                 Ok((header, status, None))
                             } else {
-                                Ok((
-                                        header,
-                                        status,
-                                        Some(serde_json::from_slice(&chunks)?)
-                                   ))
+                                Ok((header, status, Some(serde_json::from_slice(&chunks)?)))
                             }
                         })
                     });
                 core_ref.run(work)?
             }
-         }
+
+            fn paginated_execute<T>(self) -> Result<Vec<(Headers, StatusCode, T)>>
+                where T: DeserializeOwned
+            {
+                use hyper::header::Link;
+                use hyper::Uri;
+                use std::str::FromStr;
+
+                let clone_req = |req: &Request| -> Request {
+                    let mut request = Request::new(req.method().to_owned(), req.uri().to_owned());
+                    request.set_uri(req.uri().to_owned());
+                    *request.headers_mut() = req.headers().to_owned();
+                    request
+                };
+
+                let client = self.client;
+                let work = move |req| {
+                    client
+                    .request(req)
+                    .and_then(|res| {
+                        let header = res.headers().clone();
+                        let status = res.status();
+                        res.body().concat2().map(move |chunks| {
+                            Ok((header, status, serde_json::from_slice::<Vec<T>>(&chunks)?))
+                        })
+                    })
+                };
+
+                let mut core_ref = self.core.try_borrow_mut()?;
+                let request = self.request?.into_inner();
+
+                let mut req = clone_req(&request);
+                let mut results = Vec::new();
+
+                match core_ref.run(work(request))? {
+                    Ok((header, status, body)) => {
+                        results.push((header.clone(), status, body));
+                        if let Some(link) = header.get::<Link>() {
+                           // We know the values because this is how github does pagination
+                           // so as long as we have a link header using indexing is fine here
+                           let mut next = link.values()[0].link().to_string();
+                           let last = link.values()[1].link().split("page=").last()
+                                          .unwrap().parse::<i32>().unwrap();
+                           for _ in 0 .. last {
+                               let mut request = clone_req(&req);
+                               req.set_uri(Uri::from_str(&next).unwrap());
+                               let (header, status, body) = core_ref.run(work(request))??;
+                               results.push((header.clone(), status, body));
+                               if let Some(link) = header.get::<Link>() {
+                                   next = link.values()[0].link().to_string();
+                               }
+                           }
+                        }
+                        let mut flat = Vec::new();
+                        for (headers, status, json) in results {
+                            for item in json {
+                                flat.push((headers.clone(), status.clone(), item));
+                            }
+                        }
+                        Ok(flat)
+                    },
+                    Err(e) => Err(e)
+                }
+            }
+        }
     );
 }
 
@@ -318,8 +376,8 @@ macro_rules! func_client{
 }
 
 /// Common imports for every file
-macro_rules! imports{
-    () => (
+macro_rules! imports {
+    () => {
         use tokio_core::reactor::Core;
         #[cfg(feature = "rustls")]
         use hyper_rustls::HttpsConnector;
@@ -330,16 +388,14 @@ macro_rules! imports{
         use hyper::client::Client;
         use hyper::client::Request;
         use hyper::StatusCode;
-        use hyper::{ self, Body, Headers };
+        use hyper::{Body, Headers};
         use errors::*;
-        use futures::{ Future, Stream };
-        use futures::future::ok;
+        use futures::{Future, Stream};
         use util::url_join;
         use serde::de::DeserializeOwned;
         use serde_json;
         use std::rc::Rc;
         use std::cell::RefCell;
-
         use $crate::client::Executor;
-    );
+    };
 }
