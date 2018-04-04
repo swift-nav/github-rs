@@ -29,6 +29,7 @@ use notifications;
 use errors::*;
 use util::url_join;
 use gists;
+use issues;
 use orgs;
 
 use std::rc::Rc;
@@ -294,6 +295,9 @@ impl<'g> GetQueryBuilder<'g> {
 
     /// Query the notifications endpoint
     func_client!(notifications, notifications::get::Notifications<'g>);
+
+    /// Query the issues endpoint
+    func_client!(issues, issues::get::Issues<'g>);
 
     /// Add an etag to the headers of the request
     pub fn set_etag(mut self, tag: ETag) -> Self {
