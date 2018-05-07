@@ -2,7 +2,6 @@
 #![allow(dead_code)] // Until every starting struct gets used
 
 #![deny(//missing_docs,
-        unsafe_code,
         unused_import_braces,
         unused_qualifications)]
 
@@ -15,6 +14,7 @@ extern crate hyper_rustls;
 extern crate hyper_tls;
 #[cfg(feature = "native-tls")]
 extern crate native_tls;
+extern crate antidote;
 extern crate futures;
 extern crate tokio_core;
 extern crate serde;

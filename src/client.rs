@@ -1,7 +1,7 @@
 // Tokio/Future Imports
-use futures::{ Future, Stream };
 use futures::future::ok;
 use tokio_core::reactor::Core;
+use futures::{ Future, Stream };
 
 // Hyper Imports
 use hyper::{ self, Body, Headers, Uri, Method };
@@ -22,6 +22,8 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json;
 
+use antidote::{RwLock, Mutex};
+
 // Internal Library Imports
 use users;
 use misc;
@@ -32,25 +34,17 @@ use util::url_join;
 use gists;
 use orgs;
 
-use std::rc::Rc;
-use std::cell::RefCell;
+use std::sync::Arc;
 
 /// Struct used to make calls to the Github API.
-pub struct Github {
-    token: String,
-    core: Rc<RefCell<Core>>,
-    client: Rc<Client<HttpsConnector>>,
+pub struct Github<'a> {
+    token: RwLock<&'a str>,
+    core: Arc<Mutex<Core>>,
+    client: Arc<Client<HttpsConnector>>,
 }
 
-impl Clone for Github {
-    fn clone(&self) -> Self {
-        Self {
-            token: self.token.clone(),
-            core: Rc::clone(&self.core),
-            client: Rc::clone(&self.client),
-        }
-    }
-}
+unsafe impl<'a> Send for Github<'a> {}
+unsafe impl<'a> Sync for Github<'a> {}
 
 /// All GET based queries can be constructed from this type
 new_type!(GetQueryBuilder);
@@ -77,12 +71,11 @@ pub trait Executor {
         where T: DeserializeOwned;
 }
 
-impl Github {
+impl<'a> Github<'a> {
     /// Create a new Github client struct. It takes a type that can convert into
     /// an &str (`String` or `Vec<u8>` for example). As long as the function is
     /// given a valid API Token your requests will work.
-    pub fn new<T>(token: T) -> Result<Self>
-        where T: ToString {
+    pub fn new(token: &'a str) -> Result<Self> {
         let core = Core::new()?;
         let handle = core.handle();
         #[cfg(feature = "rustls")]
@@ -94,22 +87,21 @@ impl Github {
             .connector(HttpsConnector::new(4,&handle)?)
             .build(&handle);
         Ok(Self {
-            token: token.to_string(),
-            core: Rc::new(RefCell::new(core)),
-            client: Rc::new(client),
+            token: RwLock::new(token),
+            core: Arc::new(Mutex::new(core)),
+            client: Arc::new(client),
         })
     }
 
     /// Get the currently set Authorization Token
     pub fn get_token(&self) -> &str {
-        &self.token
+        &*self.token.read()
     }
 
     /// Change the currently set Authorization Token using a type that can turn
     /// into an &str. Must be a valid API Token for requests to work.
-    pub fn set_token<T>(&mut self, token: T)
-        where T: ToString {
-        self.token = token.to_string();
+    pub fn set_token(&mut self, token: &'a str) {
+        *self.token.write() = token;
     }
 
     /// Exposes the inner event loop for those who need
@@ -129,7 +121,7 @@ impl Github {
     /// program to crash unexpectedly. While you could borrow without the
     /// `Result` being handled it's highly recommended you don't unless you know
     /// there is no other mutable reference to it.
-    pub fn get_core(&self) -> &Rc<RefCell<Core>> {
+    pub fn get_core(&self) -> &Arc<Mutex<Core>> {
         &self.core
     }
 
@@ -151,7 +143,7 @@ impl Github {
             let serialized = serde_json::to_vec(&body);
             match serialized {
                 Ok(json) => {
-                    qbr.get_mut().set_body(json);
+                    qbr.set_body(json);
                     qb.request = Ok(qbr);
                 },
                 Err(_) => {
@@ -170,7 +162,7 @@ impl Github {
             let serialized = serde_json::to_vec(&body);
             match serialized {
                 Ok(json) => {
-                    qbr.get_mut().set_body(json);
+                    qbr.set_body(json);
                     qb.request = Ok(qbr);
                 },
                 Err(_) => {
@@ -190,7 +182,7 @@ impl Github {
             let serialized = serde_json::to_vec(&body);
             match serialized {
                 Ok(json) => {
-                    qbr.get_mut().set_body(json);
+                    qbr.set_body(json);
                     qb.request = Ok(qbr);
                 },
                 Err(_) => {
@@ -210,7 +202,7 @@ impl Github {
             let serialized = serde_json::to_vec(&body);
             match serialized {
                 Ok(json) => {
-                    qbr.get_mut().set_body(json);
+                    qbr.set_body(json);
                     qb.request = Ok(qbr);
                 },
                 Err(_) => {
@@ -285,7 +277,7 @@ impl <'g> GetQueryBuilder<'g> {
         match self.request {
             Ok(mut req) => {
                 let ETag(tag) = tag;
-                req.get_mut().headers_mut().set(IfNoneMatch::Items(vec![tag]));
+                req.headers_mut().set(IfNoneMatch::Items(vec![tag]));
                 self.request = Ok(req);
                 self
             }
@@ -315,7 +307,7 @@ impl <'g> PutQueryBuilder<'g> {
         match self.request {
             Ok(mut req) => {
                 let ETag(tag) = tag;
-                req.get_mut().headers_mut().set(IfNoneMatch::Items(vec![tag]));
+                req.headers_mut().set(IfNoneMatch::Items(vec![tag]));
                 self.request = Ok(req);
                 self
             }
@@ -345,7 +337,7 @@ impl <'g> DeleteQueryBuilder<'g> {
         match self.request {
             Ok(mut req) => {
                 let ETag(tag) = tag;
-                req.get_mut().headers_mut().set(IfNoneMatch::Items(vec![tag]));
+                req.headers_mut().set(IfNoneMatch::Items(vec![tag]));
                 self.request = Ok(req);
                 self
             }
@@ -375,7 +367,7 @@ impl <'g> PostQueryBuilder<'g> {
         match self.request {
             Ok(mut req) => {
                 let ETag(tag) = tag;
-                req.get_mut().headers_mut().set(IfNoneMatch::Items(vec![tag]));
+                req.headers_mut().set(IfNoneMatch::Items(vec![tag]));
                 self.request = Ok(req);
                 self
             },
@@ -405,7 +397,7 @@ impl <'g> PatchQueryBuilder<'g> {
         match self.request {
             Ok(mut req) => {
                 let ETag(tag) = tag;
-                req.get_mut().headers_mut().set(IfNoneMatch::Items(vec![tag]));
+                req.headers_mut().set(IfNoneMatch::Items(vec![tag]));
                 self.request = Ok(req);
                 self
             }
@@ -451,7 +443,7 @@ impl<'a> CustomQuery<'a>
     {
         match self.request {
             Ok(mut req) => {
-                req.get_mut().headers_mut().set(accept_header);
+                req.headers_mut().set(accept_header);
                 self.request = Ok(req);
                 self
             }

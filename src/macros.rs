@@ -33,13 +33,12 @@ macro_rules! from {
                         .and_then(|param| {
                             let sep =
                                 if req
-                                    .get_mut()
                                     .uri()
                                     .query()
                                     .is_some() { "&" } else { "?" };
                             hyper::Uri::from_str(
                                 &format!("{}{}{}={}",
-                                    req.get_mut().uri(),
+                                    req.uri(),
                                     sep,
                                     $e1,
                                     param
@@ -48,7 +47,7 @@ macro_rules! from {
                         });
                     match url {
                         Ok(u) => {
-                            req.get_mut().set_uri(u);
+                            req.set_uri(u);
                             f.request = Ok(req);
                         },
                         Err(e) => {
@@ -85,10 +84,10 @@ macro_rules! from {
                 if f.request.is_ok() {
                     // We've checked that this works
                     let mut req = f.request.unwrap();
-                    let url = url_join(req.get_mut().uri(), $e2);
+                    let url = url_join(req.uri(), $e2);
                     match url {
                         Ok(u) => {
-                            req.get_mut().set_uri(u);
+                            req.set_uri(u);
                             f.request = Ok(req);
                         },
                         Err(e) => {
@@ -119,8 +118,8 @@ macro_rules! from {
     );
     ($(@$t: ident => $p: path)*) => (
         $(
-        impl <'g> From<&'g Github> for $t<'g> {
-            fn from(gh: &'g Github) -> Self {
+        impl <'g,'a> From<&'g Github<'a>> for $t<'g> {
+            fn from(gh: &'g Github<'a>) -> Self {
                 use std::result;
                 use hyper::mime::FromStrError;
                 let url = "https://api.github.com".parse::<Uri>();
@@ -129,7 +128,7 @@ macro_rules! from {
                 match (url, mime) {
                     (Ok(u), Ok(m)) => {
                         let mut req = Request::new($p, u);
-                        let token = String::from("token ") + &gh.token;
+                        let token = String::from("token ") + *gh.token.read();
                         {
                             let headers = req.headers_mut();
                             headers.set(ContentType::json());
@@ -138,7 +137,7 @@ macro_rules! from {
                             headers.set(Authorization(token));
                         }
                         Self {
-                            request: Ok(RefCell::new(req)),
+                            request: Ok(req),
                             core: &gh.core,
                             client: &gh.client,
                             parameter: None,
@@ -185,9 +184,9 @@ macro_rules! new_type {
     ($($i: ident)*) => (
         $(
         pub struct $i<'g> {
-            pub(crate) request: Result<RefCell<Request<Body>>>,
-            pub(crate) core: &'g Rc<RefCell<Core>>,
-            pub(crate) client: &'g Rc<Client<HttpsConnector>>,
+            pub(crate) request: Result<Request<Body>>,
+            pub(crate) core: &'g Arc<Mutex<Core>>,
+            pub(crate) client: &'g Arc<Client<HttpsConnector>>,
             pub(crate) parameter: Option<String>,
         }
         )*
@@ -208,10 +207,10 @@ macro_rules! exec {
             fn execute<T>(self) -> Result<(Headers, StatusCode, Option<T>)>
             where T: DeserializeOwned
             {
-                let mut core_ref = self.core.try_borrow_mut()?;
+                let mut core_ref = self.core.lock();
                 let client = self.client;
                 let work = client
-                    .request(self.request?.into_inner())
+                    .request(self.request?)
                     .and_then(|res| {
                         let header = res.headers().clone();
                         let status = res.status();
@@ -258,10 +257,10 @@ macro_rules! impl_macro {
                     if self.request.is_ok() {
                         // We've checked that this works
                         let mut req = self.request.unwrap();
-                        let url = url_join(req.get_mut().uri(), $e2);
+                        let url = url_join(req.uri(), $e2);
                         match url {
                             Ok(u) => {
-                                req.get_mut().set_uri(u);
+                                req.set_uri(u);
                                 self.request = Ok(req);
                             },
                             Err(e) => {
@@ -301,10 +300,10 @@ macro_rules! func_client{
             if self.request.is_ok() {
                 // We've checked that this works
                 let mut req = self.request.unwrap();
-                let url = url_join(req.get_mut().uri(), $e);
+                let url = url_join(req.uri(), $e);
                 match url {
                     Ok(u) => {
-                        req.get_mut().set_uri(u);
+                        req.set_uri(u);
                         self.request = Ok(req);
                     },
                     Err(e) => {
@@ -337,8 +336,8 @@ macro_rules! imports{
         use util::url_join;
         use serde::de::DeserializeOwned;
         use serde_json;
-        use std::rc::Rc;
-        use std::cell::RefCell;
+        use std::sync::Arc;
+        use antidote::Mutex;
 
         use $crate::client::Executor;
     );
