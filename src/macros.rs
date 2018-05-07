@@ -118,8 +118,8 @@ macro_rules! from {
     );
     ($(@$t: ident => $p: path)*) => (
         $(
-        impl <'g,'a> From<&'g Github<'a>> for $t<'g> {
-            fn from(gh: &'g Github<'a>) -> Self {
+        impl <'g,'a> From<&'g Github> for $t<'g> {
+            fn from(gh: &'g Github) -> Self {
                 use std::result;
                 use hyper::mime::FromStrError;
                 let url = "https://api.github.com".parse::<Uri>();
@@ -128,7 +128,7 @@ macro_rules! from {
                 match (url, mime) {
                     (Ok(u), Ok(m)) => {
                         let mut req = Request::new($p, u);
-                        let token = String::from("token ") + *gh.token.read();
+                        let token = String::from("token ") + &*gh.token.read();
                         {
                             let headers = req.headers_mut();
                             headers.set(ContentType::json());

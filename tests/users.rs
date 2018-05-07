@@ -56,6 +56,6 @@ fn core_exposure() {
     let g = setup_github_connection();
     // Can we get the core for users to have?
     let core = g.get_core();
-    let core_mut = core.try_borrow_mut().unwrap();
+    let core_mut = core.lock();
     let _ = core_mut.handle();
 }

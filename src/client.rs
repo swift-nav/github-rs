@@ -22,7 +22,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json;
 
-use antidote::{RwLock, Mutex};
+use antidote::{RwLock, RwLockReadGuard, Mutex};
 
 // Internal Library Imports
 use users;
@@ -37,14 +37,14 @@ use orgs;
 use std::sync::Arc;
 
 /// Struct used to make calls to the Github API.
-pub struct Github<'a> {
-    token: RwLock<&'a str>,
+pub struct Github {
+    token: RwLock<String>,
     core: Arc<Mutex<Core>>,
     client: Arc<Client<HttpsConnector>>,
 }
 
-unsafe impl<'a> Send for Github<'a> {}
-unsafe impl<'a> Sync for Github<'a> {}
+unsafe impl Send for Github {}
+unsafe impl Sync for Github {}
 
 /// All GET based queries can be constructed from this type
 new_type!(GetQueryBuilder);
@@ -71,11 +71,11 @@ pub trait Executor {
         where T: DeserializeOwned;
 }
 
-impl<'a> Github<'a> {
+impl Github {
     /// Create a new Github client struct. It takes a type that can convert into
     /// an &str (`String` or `Vec<u8>` for example). As long as the function is
     /// given a valid API Token your requests will work.
-    pub fn new(token: &'a str) -> Result<Self> {
+    pub fn new(token: &str) -> Result<Self> {
         let core = Core::new()?;
         let handle = core.handle();
         #[cfg(feature = "rustls")]
@@ -87,21 +87,21 @@ impl<'a> Github<'a> {
             .connector(HttpsConnector::new(4,&handle)?)
             .build(&handle);
         Ok(Self {
-            token: RwLock::new(token),
+            token: RwLock::new(token.to_string()),
             core: Arc::new(Mutex::new(core)),
             client: Arc::new(client),
         })
     }
 
-    /// Get the currently set Authorization Token
-    pub fn get_token(&self) -> &str {
-        &*self.token.read()
+    /// Get a read lock to the currently set Authorization Token
+    pub fn get_token(&self) -> RwLockReadGuard<String> {
+        self.token.read()
     }
 
     /// Change the currently set Authorization Token using a type that can turn
     /// into an &str. Must be a valid API Token for requests to work.
-    pub fn set_token(&mut self, token: &'a str) {
-        *self.token.write() = token;
+    pub fn set_token<T>(&mut self, token: T) where T: ToString {
+        *self.token.write() = token.to_string();
     }
 
     /// Exposes the inner event loop for those who need
