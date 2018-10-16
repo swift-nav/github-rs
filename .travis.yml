@@ -9,16 +9,17 @@ rust:
 - nightly
 matrix:
   allow_failures:
-    - rust: 
-      - beta
-      - nightly
-  fast_finish: true    
+  - rust:
+    - beta
+    - nightly
+  fast_finish: true
 env:
-- FEATURES=default
-- FEATURES=rust-native-tls
+  matrix:
+  - FEATURES=default
+  - FEATURES=rust-native-tls
+  - secure: Z1axBeO7TaSu9424xSXFsJ8vC/fS7jhCDVxhyANh7Fubcv3LgYtBdbNgRgCcv8EcXKDOicpPWVbgHfEF80ulChWmvfFfsFmgnJN41fHfk2AH2n9GMIWeiwSFCOn+2PgrvC/NZjS5MS9KDFXYVDut6TffJfGixcQ/h6jtMVZ43BJi5nRDek49otVBQqMb40k5J2XMfMhgfy+VPlYUd8nAprYeuYhSb3u0UGwpp9KHgem2lYFtn6mqQH3QAMYX9qr7RzHTv8qUnNm8vUkEiaUbsHit8l38mLZlOKlfR76w7kLG0knU0IhzocGZLQCpPou8uUEVUDZopD4j5cqxAgmcxHFWaY9NUlaloeVbNL+iURwVQxho1Tcjy/ita7OaVabW9DHDQ1iKZcjhVSQw+WN7Is5gbvSShC2YguDUSTJu7SD6nTkU/A40bj3xDm++YUgbGJX6lJNU310tACsxjK/RFVYW/0lel+6OgK+DOKuLTarGV59vhVgNSexNd/4J4zVzjHPhMDSzCP4XMJFvZvyU+8AB9HuSMC3Nl1ijXYu1zxLJGGtwHkl7AAYxfF3BrJ+BuP+KaNny/Uir+kW5IPd2hWrbSOXT51pzIo/v8ITV911gwtuSGc+uZ++A0q3FPDWnzzKOrUWAULTgEfG9INj0BzRTtPgGIpISsM88laWAAy0=
 before_install:
-- openssl aes-256-cbc -K $encrypted_b63566236b41_key -iv $encrypted_b63566236b41_iv
-  -in auth_token.enc -out tests/auth_token -d
+- echo $TOKEN > tests/auth_token
 - cp tests/auth_token github-gql-rs/tests/auth_token
 script:
 - cargo build --no-default-features --features "$FEATURES"
